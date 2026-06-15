@@ -42,7 +42,6 @@ def init_excel_or_get_history():
         except Exception:
             pass
 
-    # Build stylized spreadsheet structure if it doesn't exist
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Job Database"
@@ -108,4 +107,132 @@ def save_jobs_to_excel(jobs_to_save):
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
         col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 11)
+        
+    wb.save(EXCEL_FILE)
+
+def extract_email_from_text(text):
+    """Scans description for corporate emails, excluding Gmail accounts."""
+    emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
+    for email in emails:
+        if "@gmail.com" not in email.lower():
+            return email
+    return None
+
+def fetch_linkedin_dubai_jobs(history_hashes):
+    """Queries LinkedIn specifically for Dubai jobs, applying filtration boundaries."""
+    valid_jobs = []
+    start_index = 0
+    while len(valid_jobs) < TARGET_COUNT and start_index < 300:
+        search_url = f"https://www.linkedin.com/voyager/api/voyagerCatalogDashJobPostings?geoId=105114972&keywords=Hiring&start={start_index}&count=25"
+        try:
+            response = requests.get(search_url, headers=headers)
+            if response.status_code != 200:
+                break
+            elements = response.json().get("elements", [])
+        except Exception:
+            break
+            
+        if not elements:
+            break
+
+        for item in elements:
+            if len(valid_jobs) >= TARGET_COUNT:
+                break
+            title = item.get("title", "Job Vacancy")
+            company = item.get("companyName", "A Reputed Company")
+            
+            job_hash = generate_job_hash(title, company)
+            if job_hash in history_hashes:
+                continue
+
+            description_text = BeautifulSoup(item.get("description", {}).get("text", ""), "html.parser").get_text()
+            corporate_email = extract_email_from_text(description_text)
+
+            if corporate_email:
+                short_desc = description_text[:320].strip().replace("\n", " ") + "..."
+                industry = item.get("industry", "Corporate / Specified") if item.get("industry") else "Construction / Infrastructure"
+                job_object = {
+                    "hash": job_hash, "title": title, "company": company, "desc": short_desc,
+                    "workplace": "Dubai, UAE", "email": corporate_email, "ind": industry,
+                    "posted_date": datetime.date.today().strftime("%d-%m-%Y"),
+                    "expiry_date": (datetime.date.today() + datetime.timedelta(days=30)).strftime("%d-%m-%Y")
+                }
+                valid_jobs.append(job_object)
+                history_hashes.add(job_hash)
+
+        start_index += 25
+        time.sleep(2)
+    return valid_jobs
+
+def build_whatsapp_payload(jobs_list):
+    """Assembles the final text layout tailored perfectly to your RightVows branding configuration."""
+    current_date = datetime.date.today().strftime("%d/%m/%Y")
+    full_message = ""
+    for job in jobs_list:
+        full_message += f"""⭐ Hiring ⭐
+
+⭐ Job Title: {job['title']} ⭐
+ 
+📝 Job Description:
+{job['desc']}
+
+⛳ Job Location: UAE
+✅ Gulf Experience: Required
+⛳ Work Place: {job['workplace']}
+🕹️ Visa Status: Any
+💰 Salary: To be discussed
+
+📥 Email: Send CVs to {job['email']}
+
+💼 Experience: Minimum 5 Years
+🔎 Industry: {job['ind']}
+📚 Qualification: Relevant Degree or Certification
+🌎 Preferred Nationality: Any
+🚻 Gender: Any
+🕚 Job Expiry Date: {job['expiry_date']}
+📆 Job Posted Date: {job['posted_date']}
+🛡️ Job Type: Full Time
+🚀 Source of Vacancy: RightVows Job Store
+
+Best Wishes,
+HR Team
+RightVows
+Connecting Your Talent
+
+📄 ATS CV Writing & Video CV Services: WhatsApp us at +971 543078783
+📲 Download the RightVows Mobile App for faster job updates:
+iOS 🍎 https://apple.co/2Z9oLQ6
+Android 🤖 https://bit.ly/2BRBrSK
+==================================\n"""
+    
+    full_message += f"\nPrepare Job Title Listings in the below Format \n\nRightVows Epilogue \n\nSummary of vacancies posted on {current_date} through RightVows JobStore\n\nJob Positions\n\n"
+    for index, job in enumerate(jobs_list, 1):
+        full_message += f"{index}. {job['title']}\n"
+    
+    full_message += """\nYes, we still update vacancies for you on a daily basis through RightVows Job Store\n\nTo get vacancies pls Join the biggest Job Search Whatsapp Group in GCC with 80 Nationalities \nJoining Link 🔃 https://rightvows.com/join/  (LifeTime Membership)\n\nand\n\nDownload our mobile application from 📲 App Store or Play Store \n\nApp Link 📲https://rightvows.app.link or search RightVows\n\nSubscribe to our YouTube channel for all updates  Link https://youtube.com/c/RightVows\n\nBest Wishes..\nHR Team\nRightVows\nConnecting Your Talent"""
+    return full_message
+
+def send_to_telegram(message):
+    """Sends the complete structured block directly to your personal messaging screen via your bot access."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    if len(message) > 4000:
+        chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
+        for chunk in chunks:
+            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
+            requests.post(url, json=payload)
+            time.sleep(0.5)
+    else:
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+        requests.post(url, json=payload)
+
+if __name__ == "__main__":
+    history = init_excel_or_get_history()
+    fresh_jobs = fetch_linkedin_dubai_jobs(history)
+    if fresh_jobs:
+        payload = build_whatsapp_payload(fresh_jobs[:TARGET_COUNT])
+        send_to_telegram(payload)
+        save_jobs_to_excel(fresh_jobs[:TARGET_COUNT])
+    else:
+        send_to_telegram("RightVows Check Complete: No new unique vacancies matching corporate criteria detected today.")
