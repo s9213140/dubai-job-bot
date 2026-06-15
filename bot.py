@@ -20,15 +20,14 @@ TARGET_COUNT = 25
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Cookie": f"li_at={LI_AT_COOKIE};",
+    "x-restli-protocol-version": "2.0.0"
 }
 
 def generate_job_hash(title, company):
-    """Generates a unique fingerprint to ensure no duplicate posts are processed."""
     combined_string = f"{str(title).strip().lower()}_{str(company).strip().lower()}"
     return hashlib.md5(combined_string.encode('utf-8')).hexdigest()[:10]
 
 def init_excel_or_get_history():
-    """Initializes a styled tracking ledger if missing, and loads existing job hashes to prevent duplicates."""
     existing_hashes = set()
     if os.path.exists(EXCEL_FILE):
         try:
@@ -69,17 +68,14 @@ def init_excel_or_get_history():
     return existing_hashes
 
 def save_jobs_to_excel(jobs_to_save):
-    """Appends newly sent jobs to the spreadsheet tracker with formatting."""
     if not jobs_to_save:
         return
     wb = openpyxl.load_workbook(EXCEL_FILE)
     ws = wb["Job Database"]
     
     thin_border = Border(
-        left=Side(style='thin', color='D9D9D9'),
-        right=Side(style='thin', color='D9D9D9'),
-        top=Side(style='thin', color='D9D9D9'),
-        bottom=Side(style='thin', color='D9D9D9')
+        left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
+        top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
     )
     left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
     center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -112,7 +108,6 @@ def save_jobs_to_excel(jobs_to_save):
     wb.save(EXCEL_FILE)
 
 def extract_email_from_text(text):
-    """Scans description for corporate emails, excluding Gmail accounts."""
     emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
     for email in emails:
         if "@gmail.com" not in email.lower():
@@ -120,19 +115,17 @@ def extract_email_from_text(text):
     return None
 
 def fetch_linkedin_dubai_jobs(history_hashes):
-    """Queries the LinkedIn Social Feed API to catch status updates and posts containing corporate emails in Dubai."""
     valid_jobs = []
+    # Simplified search phrases to catch general recruitment timeline updates
+    search_keywords = ["dubai hiring email", "dubai recruitment cv", "dubai vacancies"]
     
-    # We broaden keywords to find timeline updates that physically type out an email address
-    search_keywords = ["Urgent Hiring Dubai email", "Hiring Dubai send CV", "Dubai vacancy corporate email"]
-    
-    print("Scanning LinkedIn user feed updates for text job posts...")
+    print("Starting crawl across LinkedIn timeline updates...")
 
     for keyword in search_keywords:
         if len(valid_jobs) >= TARGET_COUNT:
             break
             
-        # This endpoint searches social feed updates/posts rather than formal job board slots
+        # Unified search endpoint covering public feed commentary logs
         search_url = f"https://www.linkedin.com/voyager/api/search/blended?keywords={keyword}&origin=GLOBAL_SEARCH_HEADER&q=all&start=0&count=40"
         
         try:
@@ -140,69 +133,58 @@ def fetch_linkedin_dubai_jobs(history_hashes):
             if response.status_code != 200:
                 continue
                 
-            data = response.json()
-            # Parse social feed elements
-            elements = data.get("elements", [])
-            if not elements:
-                continue
-                
+            elements = response.json().get("elements", [])
             for element in elements:
                 for hit in element.get("elements", []):
                     if len(valid_jobs) >= TARGET_COUNT:
                         break
                         
-                    # Extract the raw text written by the user in the post
                     commentary = hit.get("commentary", {})
                     description_text = commentary.get("text", {}).get("text", "")
-                    
                     if not description_text:
                         continue
                         
-                    # Rule 1: Ensure it's explicitly targeting Dubai
+                    # Strict filters
                     if "dubai" not in description_text.lower():
                         continue
                         
-                    # Rule 2: Scan for a non-gmail corporate address
                     corporate_email = extract_email_from_text(description_text)
+                    if not corporate_email:
+                        continue
+                        
+                    # Title parsing clean up logic
+                    first_line = description_text.split('\n')[0].strip()
+                    title = re.sub(r'[^a-zA-Z0-9\s|:–-]', '', first_line)
+                    title = title[:60] if len(title) > 5 else "Hiring Coordinator"
                     
-                    if corporate_email:
-                        # Deduce a title from the first line or default cleanly
-                        first_line = description_text.split('\n')[0]
-                        title = first_line[:50].replace("Urgent Hiring:", "").strip() if len(first_line) > 5 else "Job Vacancy"
-                        company = hit.get("actor", {}).get("name", {}).get("text", "A Reputed Company")
+                    company = hit.get("actor", {}).get("name", {}).get("text", "A Reputed Company")
+                    
+                    job_hash = generate_job_hash(title, company)
+                    if job_hash in history_hashes:
+                        continue
                         
-                        # Rule 3: Deduplication check
-                        job_hash = generate_job_hash(title, company)
-                        if job_hash in history_hashes:
-                            continue
-                            
-                        short_desc = description_text[:320].strip().replace("\n", " ") + "..."
-                        
-                        job_object = {
-                            "hash": job_hash,
-                            "title": title,
-                            "company": company,
-                            "desc": short_desc,
-                            "workplace": "Dubai, UAE",
-                            "email": corporate_email,
-                            "ind": "Corporate / Recruitment Feed",
-                            "posted_date": datetime.date.today().strftime("%d-%m-%Y"),
-                            "expiry_date": (datetime.date.today() + datetime.timedelta(days=30)).strftime("%d-%m-%Y")
-                        }
-                        
-                        valid_jobs.append(job_object)
-                        history_hashes.add(job_hash)
-                        print(f"Acquired Feed Match {len(valid_jobs)}: {title} ({company})")
-                        
+                    short_desc = description_text.replace("\n", " ")
+                    if len(short_desc) > 350:
+                        short_desc = short_desc[:350].strip() + "..."
+
+                    job_object = {
+                        "hash": job_hash, "title": title, "company": company, "desc": short_desc,
+                        "workplace": "Dubai, UAE", "email": corporate_email, "ind": "Recruitment Feed",
+                        "posted_date": datetime.date.today().strftime("%d-%m-%Y"),
+                        "expiry_date": (datetime.date.today() + datetime.timedelta(days=30)).strftime("%d-%m-%Y")
+                    }
+                    
+                    valid_jobs.append(job_object)
+                    history_hashes.add(job_hash)
+                    print(f"Match Saved: {title} via email: {corporate_email}")
+                    
         except Exception as e:
-            print(f"Error scanning feed for keyword '{keyword}': {e}")
-            
-        time.sleep(3) # Safe pacing delay
+            pass
+        time.sleep(2)
         
     return valid_jobs
 
 def build_whatsapp_payload(jobs_list):
-    """Assembles the final text layout tailored perfectly to your RightVows branding configuration."""
     current_date = datetime.date.today().strftime("%d/%m/%Y")
     full_message = ""
     for job in jobs_list:
@@ -250,18 +232,14 @@ Android 🤖 https://bit.ly/2BRBrSK
     return full_message
 
 def send_to_telegram(message):
-    """Sends the complete structured block directly to your personal messaging screen via your bot access."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    
     if len(message) > 4000:
         chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
         for chunk in chunks:
-            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
-            requests.post(url, json=payload)
+            requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": chunk})
             time.sleep(0.5)
     else:
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-        requests.post(url, json=payload)
+        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": message})
 
 if __name__ == "__main__":
     history = init_excel_or_get_history()
@@ -271,4 +249,4 @@ if __name__ == "__main__":
         send_to_telegram(payload)
         save_jobs_to_excel(fresh_jobs[:TARGET_COUNT])
     else:
-        send_to_telegram("RightVows Check Complete: No new unique vacancies matching corporate criteria detected today.")
+        send_to_telegram("RightVows Check Complete: No new unique status-post vacancies detected over this run.")
