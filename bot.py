@@ -120,49 +120,85 @@ def extract_email_from_text(text):
     return None
 
 def fetch_linkedin_dubai_jobs(history_hashes):
-    """Queries LinkedIn specifically for Dubai jobs, applying filtration boundaries."""
+    """Queries the LinkedIn Social Feed API to catch status updates and posts containing corporate emails in Dubai."""
     valid_jobs = []
-    start_index = 0
-    while len(valid_jobs) < TARGET_COUNT and start_index < 300:
-        search_url = f"https://www.linkedin.com/voyager/api/voyagerCatalogDashJobPostings?geoId=105114972&keywords=Hiring&start={start_index}&count=25"
+    
+    # We broaden keywords to find timeline updates that physically type out an email address
+    search_keywords = ["Urgent Hiring Dubai email", "Hiring Dubai send CV", "Dubai vacancy corporate email"]
+    
+    print("Scanning LinkedIn user feed updates for text job posts...")
+
+    for keyword in search_keywords:
+        if len(valid_jobs) >= TARGET_COUNT:
+            break
+            
+        # This endpoint searches social feed updates/posts rather than formal job board slots
+        search_url = f"https://www.linkedin.com/voyager/api/search/blended?keywords={keyword}&origin=GLOBAL_SEARCH_HEADER&q=all&start=0&count=40"
+        
         try:
             response = requests.get(search_url, headers=headers)
             if response.status_code != 200:
-                break
-            elements = response.json().get("elements", [])
-        except Exception:
-            break
-            
-        if not elements:
-            break
-
-        for item in elements:
-            if len(valid_jobs) >= TARGET_COUNT:
-                break
-            title = item.get("title", "Job Vacancy")
-            company = item.get("companyName", "A Reputed Company")
-            
-            job_hash = generate_job_hash(title, company)
-            if job_hash in history_hashes:
                 continue
-
-            description_text = BeautifulSoup(item.get("description", {}).get("text", ""), "html.parser").get_text()
-            corporate_email = extract_email_from_text(description_text)
-
-            if corporate_email:
-                short_desc = description_text[:320].strip().replace("\n", " ") + "..."
-                industry = item.get("industry", "Corporate / Specified") if item.get("industry") else "Construction / Infrastructure"
-                job_object = {
-                    "hash": job_hash, "title": title, "company": company, "desc": short_desc,
-                    "workplace": "Dubai, UAE", "email": corporate_email, "ind": industry,
-                    "posted_date": datetime.date.today().strftime("%d-%m-%Y"),
-                    "expiry_date": (datetime.date.today() + datetime.timedelta(days=30)).strftime("%d-%m-%Y")
-                }
-                valid_jobs.append(job_object)
-                history_hashes.add(job_hash)
-
-        start_index += 25
-        time.sleep(2)
+                
+            data = response.json()
+            # Parse social feed elements
+            elements = data.get("elements", [])
+            if not elements:
+                continue
+                
+            for element in elements:
+                for hit in element.get("elements", []):
+                    if len(valid_jobs) >= TARGET_COUNT:
+                        break
+                        
+                    # Extract the raw text written by the user in the post
+                    commentary = hit.get("commentary", {})
+                    description_text = commentary.get("text", {}).get("text", "")
+                    
+                    if not description_text:
+                        continue
+                        
+                    # Rule 1: Ensure it's explicitly targeting Dubai
+                    if "dubai" not in description_text.lower():
+                        continue
+                        
+                    # Rule 2: Scan for a non-gmail corporate address
+                    corporate_email = extract_email_from_text(description_text)
+                    
+                    if corporate_email:
+                        # Deduce a title from the first line or default cleanly
+                        first_line = description_text.split('\n')[0]
+                        title = first_line[:50].replace("Urgent Hiring:", "").strip() if len(first_line) > 5 else "Job Vacancy"
+                        company = hit.get("actor", {}).get("name", {}).get("text", "A Reputed Company")
+                        
+                        # Rule 3: Deduplication check
+                        job_hash = generate_job_hash(title, company)
+                        if job_hash in history_hashes:
+                            continue
+                            
+                        short_desc = description_text[:320].strip().replace("\n", " ") + "..."
+                        
+                        job_object = {
+                            "hash": job_hash,
+                            "title": title,
+                            "company": company,
+                            "desc": short_desc,
+                            "workplace": "Dubai, UAE",
+                            "email": corporate_email,
+                            "ind": "Corporate / Recruitment Feed",
+                            "posted_date": datetime.date.today().strftime("%d-%m-%Y"),
+                            "expiry_date": (datetime.date.today() + datetime.timedelta(days=30)).strftime("%d-%m-%Y")
+                        }
+                        
+                        valid_jobs.append(job_object)
+                        history_hashes.add(job_hash)
+                        print(f"Acquired Feed Match {len(valid_jobs)}: {title} ({company})")
+                        
+        except Exception as e:
+            print(f"Error scanning feed for keyword '{keyword}': {e}")
+            
+        time.sleep(3) # Safe pacing delay
+        
     return valid_jobs
 
 def build_whatsapp_payload(jobs_list):
