@@ -1,0 +1,37 @@
+name: Friday Weekly Excel Delivery
+
+on:
+  schedule:
+    # Runs every Friday at 10:00 PM IST (16:30 UTC)
+    - cron: '30 16 * * *'
+  workflow_dispatch: # Allows you to manually trigger it from GitHub if needed
+
+jobs:
+  send-weekly-excel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out files
+        uses: actions/checkout@v4
+
+      - name: Send Weekly Excel Report via Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: YOUR_SENDING_EMAIL@gmail.com
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          
+          subject: "Weekly Master Dubai Job Tracker Report - RightVows Job Store"
+          to: sngithacv@gmail.com
+          from: "RightVows Weekly Archiver <YOUR_SENDING_EMAIL@gmail.com>"
+          body: |
+            Hello,
+            
+            Please find attached your weekly master Excel ledger compilation (dubai_job_tracker.xlsx). 
+            
+            This file contains all the individual daily worksheets generated throughout the week with completely deduplicated corporate vacancies.
+            
+            Best Regards,
+            RightVows Automation Engine
+            
+          attachments: dubai_job_tracker.xlsx
