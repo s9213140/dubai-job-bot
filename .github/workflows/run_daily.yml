@@ -1,19 +1,19 @@
 name: Daily Dubai Job Pipeline
 
 on:
-  workflow_dispatch: # Adds a manual "Run Workflow" trigger button in GitHub Actions
+  workflow_dispatch: 
   schedule:
-    - cron: '0 6 * * *' # Automatically runs the script for free every single day at 6:00 AM UTC
+    - cron: '0 6 * * *' 
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
     steps:
       - name: Check out files
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Upgraded from v3
 
       - name: Setup Python environment
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # Upgraded from v4
         with:
           python-version: '3.10'
 
@@ -28,6 +28,6 @@ jobs:
         run: python bot.py
 
       - name: Save Updated Excel Tracker Back to GitHub
-        uses: stefanzweifel/git-auto-commit-action@v4
+        uses: stefanzweifel/git-auto-commit-action@v5 # Upgraded from v4
         with:
           commit_message: "Automated Sheet Update: Appended New Daily Matches"
