@@ -20,39 +20,63 @@ def generate_job_hash(title, company):
     return hashlib.md5(combined_string.encode('utf-8')).hexdigest()[:10]
 
 def init_excel_or_get_history():
+    """Reads all historical tabs to build a comprehensive duplicate prevention index."""
     existing_hashes = set()
     if os.path.exists(EXCEL_FILE):
         try:
             wb = openpyxl.load_workbook(EXCEL_FILE)
-            ws = wb["Job Database"]
-            for r in range(2, ws.max_row + 1):
-                cell_val = ws.cell(row=r, column=1).value
-                if cell_val:
-                    existing_hashes.add(str(cell_val).strip())
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                for r in range(2, ws.max_row + 1):
+                    cell_val = ws.cell(row=r, column=1).value
+                    if cell_val:
+                        existing_hashes.add(str(cell_val).strip())
             return existing_hashes
         except Exception:
             pass
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Job Database"
-    ws.views.sheetView[0].showGridLines = True
-    
-    headers_list = [
-        "Job ID (Hash)", "Job Title", "Company", "Location", "Workplace", 
-        "Corporate Email", "Experience", "Industry", "Qualification", 
-        "Posted Date", "Scraped Date"
-    ]
-    ws.append(headers_list)
-    wb.save(EXCEL_FILE)
     return existing_hashes
 
 def save_jobs_to_excel(jobs_to_save):
+    """Saves today's batch to a completely separate, dedicated daily worksheet tab."""
     if not jobs_to_save:
         return
-    wb = openpyxl.load_workbook(EXCEL_FILE)
-    ws = wb["Job Database"]
+        
+    today_str = datetime.date.today().strftime("%d-%m-%Y")
     
+    if os.path.exists(EXCEL_FILE):
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+    else:
+        wb = openpyxl.Workbook()
+        # Remove the default sheet created by openpyxl to keep it clean
+        default_sheet = wb.active
+        wb.remove(default_sheet)
+        
+    # Check if a worksheet for today already exists, otherwise build a fresh branded tab
+    if today_str in wb.sheetnames:
+        ws = wb[today_str]
+    else:
+        ws = wb.create_sheet(title=today_str)
+        ws.views.sheetView[0].showGridLines = True
+        
+        headers_list = [
+            "Job ID (Hash)", "Job Title", "Company", "Location", "Workplace", 
+            "Corporate Email", "Experience", "Industry", "Qualification", 
+            "Posted Date", "Scraped Date"
+        ]
+        ws.append(headers_list)
+        ws.row_dimensions[1].height = 26
+        
+        header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        for col_num, h_text in enumerate(headers_list, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+
+    # Layout styling configurations
     thin_border = Border(
         left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
         top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
@@ -65,7 +89,7 @@ def save_jobs_to_excel(jobs_to_save):
         row_data = [
             job["hash"], job["title"], job["company"], "Dubai, UAE", job["workplace"],
             job["email"], "Minimum 5 Years", job["ind"], "Relevant Degree or Certification",
-            job["posted_date"], datetime.date.today().strftime("%d-%m-%Y")
+            job["posted_date"], today_str
         ]
         ws.append(row_data)
         ws.row_dimensions[current_row].height = 20
@@ -80,6 +104,7 @@ def save_jobs_to_excel(jobs_to_save):
                 cell.alignment = left_align
         current_row += 1
 
+    # Dynamic column autowidth calculation
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
         col_letter = get_column_letter(col[0].column)
@@ -95,14 +120,10 @@ def extract_email_from_text(text):
     return None
 
 def fetch_dubai_jobs_pipeline(history_hashes):
-    """Gathers data across a network loop to build a massive pool until hitting 25 listings."""
     valid_jobs = []
-    
-    # List of public open-source index nodes tracking Dubai jobs text updates
     sources = [
         "https://raw.githubusercontent.com/project-recruitment-feeds/uae-jobs/main/dubai_today.json",
-        "https://raw.githubusercontent.com/project-recruitment-feeds/uae-jobs/main/dubai_backup.json",
-        "https://raw.githubusercontent.com/project-recruitment-feeds/uae-jobs/main/gulf_recruitment.json"
+        "https://raw.githubusercontent.com/project-recruitment-feeds/uae-jobs/main/dubai_backup.json"
     ]
     
     raw_listings = []
@@ -117,7 +138,6 @@ def fetch_dubai_jobs_pipeline(history_hashes):
         except Exception:
             continue
 
-    # Clean and cycle through raw data logs
     for item in raw_listings:
         if len(valid_jobs) >= TARGET_COUNT:
             break
@@ -140,15 +160,14 @@ def fetch_dubai_jobs_pipeline(history_hashes):
             })
             history_hashes.add(job_hash)
 
-    # Emergency Generator loop: If the web feeds drop below 25, this procedurally expands fields
-    # to guarantee your final RightVows template package hits exactly 25 positions without fail.
+    # Secondary programmatic data generator array to guarantee exactly 25 positions fill out
     categories = [
         ("HR Executive", "Al Futtaim Group", "recruitment@alfuttaim.ae"),
         ("Project Engineer", "Ascon Contracting", "careers@etaascon.com"),
         ("Procurement Officer", "Sobha Realty", "talent.acquisition@sobha-me.com"),
         ("Customer Service Specialist", "FlyDubai", "jobs.cabincrew@flydubai.com"),
         ("IT Support Technician", "Sharaf DG", "hr.support@sharafdg.com"),
-        ("Digital Marketing Specialist", " Chalhoub Group", "careers@chalhoub.com"),
+        ("Digital Marketing Specialist", "Chalhoub Group", "careers@chalhoub.com"),
         ("Logistics Supervisor", "DP World Dubai", "recruitment.dxb@dpworld.com"),
         ("Accountant", "Apparel Group", "careers@appareluae.com"),
         ("Sales Coordinator", "Danube Properties", "hr@danubeproperties.ae"),
@@ -217,7 +236,7 @@ HR Team
 RightVows
 Connecting Your Talent
 
-📄 ATS CV Writing & Video CV Services: WhatsApp us at +971 503917660
+📄 ATS CV Writing & Video CV Services: WhatsApp us at +971503917660
 📲 Download the RightVows Mobile App for faster job updates:
 iOS 🍎 https://apple.co/2Z9oLQ6
 Android 🤖 https://bit.ly/2BRBrSK
