@@ -30,7 +30,8 @@ def fetch_dubai_jobs_pipeline(history):
     fresh_jobs = []
     keywords = "Manager%20OR%20Engineer%20OR%20Developer%20OR%20Executive%20OR%20Specialist%20OR%20Analyst"
     
-    for start_index in [0, 25]:
+    # Expanded loop to check pages 1, 2, 3, and 4 to confidently reach 25 unique items
+    for start_index in [0, 25, 50, 75]:
         if len(fresh_jobs) >= TARGET_COUNT:
             break
         url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location=Dubai%2C%20United%20Arab%20Emirates&f_TPR=r86400&start={start_index}"
