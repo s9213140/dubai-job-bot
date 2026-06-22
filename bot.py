@@ -19,90 +19,93 @@ def init_excel_or_get_history():
             if not df.empty and "Title" in df.columns:
                 history.update(df["Title"].astype(str).str.lower().strip().tolist())
         return history
-    except Exception as e:
-        print(f"Warning initializing logs: {str(e)}")
+    except Exception:
         return set()
 
 def fetch_dubai_jobs_pipeline(history):
-    print("Connecting to live LinkedIn job index...")
-    url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Dubai&location=United%20Arab%20Emirates&start=0"
+    print("Connecting to public LinkedIn skilled job index (Past 24 Hours)...")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     fresh_jobs = []
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code != 200:
-            print(f"LinkedIn Feed error: Status code {response.status_code}")
-            return fresh_jobs
+    
+    # Skilled job keywords to target professional listings
+    keywords = "Manager%20OR%20Engineer%20OR%20Developer%20OR%20Executive%20OR%20Specialist%20OR%20Analyst"
+    
+    # Pulling 2 pages (0 and 25) to confidently assemble 25 unique items
+    for start_index in [0, 25]:
+        if len(fresh_jobs) >= TARGET_COUNT:
+            break
             
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, 'html.parser')
-        job_cards = soup.find_all("li")
+        # f_TPR=r86400 restricts results strictly to listings posted within the last 24 hours
+        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location=Dubai%2C%20United%20Arab%20Emirates&f_TPR=r86400&start={start_index}"
         
-        for card in job_cards:
-            title_tag = card.find("h3", class_="base-search-card__title")
-            company_tag = card.find("h4", class_="base-search-card__subtitle")
-            link_tag = card.find("a", class_="base-card__full-link")
-            date_tag = card.find("time", class_="job-search-card__listdate")
-            
-            if not title_tag:
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
                 continue
-                
-            clean_title = title_tag.text.strip()
-            company = company_tag.text.strip() if company_tag else "Unknown Company"
-            link = link_tag['href'].split('?')[0] if link_tag else "https://linkedin.com"
-            pub_date = date_tag.text.strip() if date_tag else datetime.now().strftime("%d-%m-%Y")
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, 'html.parser')
+            job_cards = soup.find_all("li")
             
-            if clean_title.lower().strip() in history:
-                continue
+            for card in job_cards:
+                title_tag = card.find("h3", class_="base-search-card__title")
+                company_tag = card.find("h4", class_="base-search-card__subtitle")
+                link_tag = card.find("a", class_="base-card__full-link")
+                date_tag = card.find("time", class_="job-search-card__listdate")
                 
-            job_data = {
-                "title": f"{clean_title} ({company})",
-                "workplace": "Dubai, UAE",
-                "email": f"Apply directly on LinkedIn: {link}",
-                "experience": "See LinkedIn job description",
-                "ind": "Sourced via LinkedIn Jobs",
-                "qualification": "Relevant Degree / Experience",
-                "nationality": "Any",
-                "gender": "Any",
-                "expiry_date": "ASAP",
-                "posted_date": pub_date,
-                "job_type": "Full Time"
-            }
-            fresh_jobs.append(job_data)
-            if len(fresh_jobs) >= TARGET_COUNT:
-                break
-    except Exception as e:
-        print(f"Scraper checkpoint: {str(e)}")
-        
-    print(f"Scrape completed: Isolated {len(fresh_jobs)} openings.")
+                if not title_tag:
+                    continue
+                    
+                clean_title = title_tag.text.strip()
+                company = company_tag.text.strip() if company_tag else "Professional Employer"
+                link = link_tag['href'].split('?')[0] if link_tag else "https://linkedin.com"
+                pub_date = date_tag.text.strip() if date_tag else "Posted Today"
+                
+                # Strict duplicate filter against historical Excel database entries
+                if clean_title.lower().strip() in history:
+                    continue
+                    
+                job_data = {
+                    "title": f"{clean_title} ({company})",
+                    "workplace": "Dubai, UAE",
+                    "email": f"Apply via LinkedIn: {link}",
+                    "experience": "See job details on LinkedIn",
+                    "ind": "Sourced via LinkedIn Professional Index",
+                    "qualification": "Relevant Professional Degree",
+                    "nationality": "Any",
+                    "gender": "Any",
+                    "expiry_date": "ASAP",
+                    "posted_date": pub_date,
+                    "job_type": "Full Time"
+                }
+                
+                if job_data not in fresh_jobs:
+                    fresh_jobs.append(job_data)
+                    
+        except Exception:
+            pass
+            
     return fresh_jobs
 
-def build_email_broadcast_payload(jobs):
-    payload = "🚀 *RIGHTVOWS LIVE DUBAI JOB BROADCAST* 🚀\n\n"
+def build_broadcast_payload(jobs):
+    payload = "🚀 *RIGHTVOWS LIVE DUBAI SKILLED JOB BROADCAST* 🚀\n\n"
     if not jobs:
-        payload += "No new unique vacancies discovered today! Check back tomorrow for fresh updates.\n\n"
+        payload += "No new unique skilled vacancies discovered in the last 24 hours! Check back shortly.\n\n"
     else:
         for idx, job in enumerate(jobs, 1):
-            payload += f"📌 *VACANCY NO {idx}: {job.get('title', 'N/A').upper()}*\n\n"
-            payload += f"⛳ *Job Location:* UAE\n"
-            payload += f"✅ *Gulf Experience:* Required\n"
-            payload += f"⛳ *Work Place:* {job.get('workplace', 'N/A')}\n"
-            payload += f"🕹️ *Visa Status:* Any\n"
-            payload += f"💰 *Salary:* To be discussed\n\n"
-            payload += f"📥 *Application/Email:* {job.get('email', 'N/A')}\n\n"
-            payload += f"💼 *Experience:* {job.get('experience', 'As per job post')}\n"
-            payload += f"🔎 *Industry:* {job.get('ind', 'N/A')}\n"
-            payload += f"📚 *Qualification:* {job.get('qualification', 'Relevant Degree or Certification')}\n"
-            payload += f"🌎 *Preferred Nationality:* {job.get('nationality', 'Any')}\n"
-            payload += f"🚻 *Gender:* {job.get('gender', 'Any')}\n"
-            payload += f"🕚 *Job Expiry Date:* {job.get('expiry_date', 'N/A')}\n"
-            payload += f"📆 *Job Posted Date:* {job.get('posted_date', 'N/A')}\n"
-            payload += f"🛡️ *Job Type:* {job.get('job_type', 'Full Time')}\n"
-            payload += f"🚀 *Source of Vacancy:* RightVows Job Store (via LinkedIn)\n\n"
+            payload += f"📌 *VACANCY NO {idx}: {job['title'].upper()}*\n\n"
+            payload += f"⛳ *Job Location:* Dubai, UAE\n"
+            payload += f"✅ *Gulf Experience:* Preferred / Required\n"
+            payload += f"⛳ *Work Place:* {job['workplace']}\n"
+            payload += f"🕹️ *Visa Status:* Open / Any\n"
+            payload += f"💰 *Salary:* Industry Standard (To be discussed)\n\n"
+            payload += f"📥 *Application Link:* {job['email']}\n\n"
+            payload += f"💼 *Experience:* {job['experience']}\n"
+            payload += f"🔎 *Industry:* {job['ind']}\n"
+            payload += f"🛡️ *Job Type:* {job['job_type']}\n\n"
             payload += "----------------------------------------\n\n"
-    payload += "Best Wishes,\n*HR Team*\n*RightVows*\n_Connecting Your Talent_"
+    payload += "Best Wishes,\n*HR Team*\n*RightVows*"
     return payload
 
 def save_jobs_to_excel(jobs):
@@ -123,10 +126,9 @@ if __name__ == "__main__":
     fresh_vacancies = fetch_dubai_jobs_pipeline(history_logs)
     target_subset = fresh_vacancies[:TARGET_COUNT]
     
-    # Generate the text block file
-    broadcast_text = build_email_broadcast_payload(target_subset)
+    broadcast_text = build_broadcast_payload(target_subset)
     with open("whatsapp_broadcast.txt", "w", encoding="utf-8") as f:
         f.write(broadcast_text)
-    
+        
     if target_subset:
         save_jobs_to_excel(target_subset)
