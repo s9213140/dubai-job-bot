@@ -2,8 +2,6 @@ import os
 import requests
 import pandas as pd
 from datetime import datetime
-import smtplib
-from email.mime.text import MIMEText
 
 TARGET_COUNT = 25
 EXCEL_FILE_PATH = "dubai_job_tracker.xlsx"
@@ -22,7 +20,7 @@ def init_excel_or_get_history():
                 history.update(df["Title"].astype(str).str.lower().strip().tolist())
         return history
     except Exception as e:
-        print(f"Warning initializing historical logs: {str(e)}")
+        print(f"Warning initializing logs: {str(e)}")
         return set()
 
 def fetch_dubai_jobs_pipeline(history):
@@ -76,9 +74,9 @@ def fetch_dubai_jobs_pipeline(history):
             if len(fresh_jobs) >= TARGET_COUNT:
                 break
     except Exception as e:
-        print(f"Scraper structural checkpoint: {str(e)}")
+        print(f"Scraper checkpoint: {str(e)}")
         
-    print(f"Scrape completed: Isolated {len(fresh_jobs)} brand-new openings from LinkedIn.")
+    print(f"Scrape completed: Isolated {len(fresh_jobs)} openings.")
     return fresh_jobs
 
 def build_email_broadcast_payload(jobs):
@@ -107,28 +105,6 @@ def build_email_broadcast_payload(jobs):
     payload += "Best Wishes,\n*HR Team*\n*RightVows*\n_Connecting Your Talent_"
     return payload
 
-def send_direct_email(content):
-    """Sends the broadcast text directly using secure built-in Python SMTP protocol."""
-    print("Initiating direct secure email transmission...")
-    sender = "sngithacv@gmail.com"
-    receiver = "sngithacv@gmail.com"
-    
-    # Using your active application password credentials
-    app_password = "qyfx xbnm xgzo ytyu" 
-    
-    msg = MIMEText(content, "plain", "utf-8")
-    msg["Subject"] = "🚀 RIGHTVOWS DAILY WHATSAPP BROADCAST MATRICES"
-    msg["From"] = f"RightVows Bot <{sender}>"
-    msg["To"] = receiver
-    
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender, app_password)
-            server.sendmail(sender, [receiver], msg.as_string())
-        print("Email transmitted successfully straight to your inbox!")
-    except Exception as e:
-        print(f"Direct mail transport failure: {str(e)}")
-
 def save_jobs_to_excel(jobs):
     if not jobs:
         return
@@ -138,7 +114,6 @@ def save_jobs_to_excel(jobs):
     try:
         with pd.ExcelWriter(EXCEL_FILE_PATH, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
             df_new.to_excel(writer, sheet_name=today_str, index=False)
-        print(f"Excel updated successfully. Added tab: {today_str}")
     except Exception:
         with pd.ExcelWriter(EXCEL_FILE_PATH, engine="openpyxl", mode="w") as writer:
             df_new.to_excel(writer, sheet_name=today_str, index=False)
@@ -146,12 +121,12 @@ def save_jobs_to_excel(jobs):
 if __name__ == "__main__":
     history_logs = init_excel_or_get_history()
     fresh_vacancies = fetch_dubai_jobs_pipeline(history_logs)
-    
     target_subset = fresh_vacancies[:TARGET_COUNT]
-    broadcast_text = build_email_broadcast_payload(target_subset)
     
-    # Send the email immediately from the script execution context
-    send_direct_email(broadcast_text)
+    # Generate the text block file
+    broadcast_text = build_email_broadcast_payload(target_subset)
+    with open("whatsapp_broadcast.txt", "w", encoding="utf-8") as f:
+        f.write(broadcast_text)
     
     if target_subset:
         save_jobs_to_excel(target_subset)
