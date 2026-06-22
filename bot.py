@@ -28,18 +28,12 @@ def fetch_dubai_jobs_pipeline(history):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     fresh_jobs = []
-    
-    # Skilled job keywords to target professional listings
     keywords = "Manager%20OR%20Engineer%20OR%20Developer%20OR%20Executive%20OR%20Specialist%20OR%20Analyst"
     
-    # Pulling 2 pages (0 and 25) to confidently assemble 25 unique items
     for start_index in [0, 25]:
         if len(fresh_jobs) >= TARGET_COUNT:
             break
-            
-        # f_TPR=r86400 restricts results strictly to listings posted within the last 24 hours
         url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location=Dubai%2C%20United%20Arab%20Emirates&f_TPR=r86400&start={start_index}"
-        
         try:
             response = requests.get(url, headers=headers, timeout=15)
             if response.status_code != 200:
@@ -62,7 +56,6 @@ def fetch_dubai_jobs_pipeline(history):
                 link = link_tag['href'].split('?')[0] if link_tag else "https://linkedin.com"
                 pub_date = date_tag.text.strip() if date_tag else "Posted Today"
                 
-                # Strict duplicate filter against historical Excel database entries
                 if clean_title.lower().strip() in history:
                     continue
                     
@@ -79,13 +72,12 @@ def fetch_dubai_jobs_pipeline(history):
                     "posted_date": pub_date,
                     "job_type": "Full Time"
                 }
-                
                 if job_data not in fresh_jobs:
                     fresh_jobs.append(job_data)
-                    
         except Exception:
             pass
             
+    print(f"Scrape completed: Isolated {len(fresh_jobs)} fresh skilled jobs.")
     return fresh_jobs
 
 def build_broadcast_payload(jobs):
@@ -117,9 +109,11 @@ def save_jobs_to_excel(jobs):
     try:
         with pd.ExcelWriter(EXCEL_FILE_PATH, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
             df_new.to_excel(writer, sheet_name=today_str, index=False)
+        print(f"Excel tracker updated successfully for date: {today_str}")
     except Exception:
         with pd.ExcelWriter(EXCEL_FILE_PATH, engine="openpyxl", mode="w") as writer:
             df_new.to_excel(writer, sheet_name=today_str, index=False)
+        print(f"Excel tracker created successfully for date: {today_str}")
 
 if __name__ == "__main__":
     history_logs = init_excel_or_get_history()
@@ -129,6 +123,7 @@ if __name__ == "__main__":
     broadcast_text = build_broadcast_payload(target_subset)
     with open("whatsapp_broadcast.txt", "w", encoding="utf-8") as f:
         f.write(broadcast_text)
+    print("WhatsApp broadcast text block generated successfully.")
         
     if target_subset:
         save_jobs_to_excel(target_subset)
