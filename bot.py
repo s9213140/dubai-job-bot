@@ -23,14 +23,15 @@ def init_excel_or_get_history():
         return set()
 
 def fetch_dubai_jobs_pipeline(history):
-    print("Connecting to public LinkedIn skilled job index (Past 24 Hours)...")
+    print("Connecting to public LinkedIn skilled & logistics job index (Past 24 Hours)...")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     fresh_jobs = []
-    keywords = "Manager%20OR%20Engineer%20OR%20Developer%20OR%20Executive%20OR%20Specialist%20OR%20Analyst"
     
-    # Expanded loop to check pages 1, 2, 3, and 4 to confidently reach 25 unique items
+    # Expanded keywords to include Admin, Supervisor, Store Manager, and Warehouse roles
+    keywords = "Admin%20OR%20Supervisor%20OR%20Store%20Manager%20OR%20Warehouse%20OR%20Manager%20OR%20Engineer%20OR%20Executive%20OR%20Specialist"
+    
     for start_index in [0, 25, 50, 75]:
         if len(fresh_jobs) >= TARGET_COUNT:
             break
@@ -66,7 +67,7 @@ def fetch_dubai_jobs_pipeline(history):
                     "email": f"Apply via LinkedIn: {link}",
                     "experience": "See job details on LinkedIn",
                     "ind": "Sourced via LinkedIn Professional Index",
-                    "qualification": "Relevant Professional Degree",
+                    "qualification": "Relevant Background / Degree",
                     "nationality": "Any",
                     "gender": "Any",
                     "expiry_date": "ASAP",
@@ -78,13 +79,13 @@ def fetch_dubai_jobs_pipeline(history):
         except Exception:
             pass
             
-    print(f"Scrape completed: Isolated {len(fresh_jobs)} fresh skilled jobs.")
+    print(f"Scrape completed: Isolated {len(fresh_jobs)} fresh skilled & operations jobs.")
     return fresh_jobs
 
 def build_broadcast_payload(jobs):
     payload = "🚀 *RIGHTVOWS LIVE DUBAI SKILLED JOB BROADCAST* 🚀\n\n"
     if not jobs:
-        payload += "No new unique skilled vacancies discovered in the last 24 hours! Check back shortly.\n\n"
+        payload += "No new unique vacancies discovered in the last 24 hours! Check back shortly.\n\n"
     else:
         for idx, job in enumerate(jobs, 1):
             payload += f"📌 *VACANCY NO {idx}: {job['title'].upper()}*\n\n"
@@ -92,13 +93,17 @@ def build_broadcast_payload(jobs):
             payload += f"✅ *Gulf Experience:* Preferred / Required\n"
             payload += f"⛳ *Work Place:* {job['workplace']}\n"
             payload += f"🕹️ *Visa Status:* Open / Any\n"
-            payload += f"💰 *Salary:* Industry Standard (To be discussed)\n\n"
+            payload += f"💰 *Salary:* Industry Standard\n\n"
             payload += f"📥 *Application Link:* {job['email']}\n\n"
             payload += f"💼 *Experience:* {job['experience']}\n"
             payload += f"🔎 *Industry:* {job['ind']}\n"
             payload += f"🛡️ *Job Type:* {job['job_type']}\n\n"
             payload += "----------------------------------------\n\n"
-    payload += "Best Wishes,\n*HR Team*\n*RightVows*"
+            
+    # Added your customized epilogue section at the very end
+    payload += "Best Wishes,\n*HR Team*\n*RightVows*\n\n"
+    payload += "--- 📋 *RESUME SERVICES* ---\n"
+    payload += "Want to make your application stand out? For an **ATS-friendly resume**, contact this number to upgrade your profile today!"
     return payload
 
 def save_jobs_to_excel(jobs):
@@ -110,11 +115,9 @@ def save_jobs_to_excel(jobs):
     try:
         with pd.ExcelWriter(EXCEL_FILE_PATH, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
             df_new.to_excel(writer, sheet_name=today_str, index=False)
-        print(f"Excel tracker updated successfully for date: {today_str}")
     except Exception:
         with pd.ExcelWriter(EXCEL_FILE_PATH, engine="openpyxl", mode="w") as writer:
             df_new.to_excel(writer, sheet_name=today_str, index=False)
-        print(f"Excel tracker created successfully for date: {today_str}")
 
 if __name__ == "__main__":
     history_logs = init_excel_or_get_history()
@@ -124,7 +127,6 @@ if __name__ == "__main__":
     broadcast_text = build_broadcast_payload(target_subset)
     with open("whatsapp_broadcast.txt", "w", encoding="utf-8") as f:
         f.write(broadcast_text)
-    print("WhatsApp broadcast text block generated successfully.")
         
     if target_subset:
         save_jobs_to_excel(target_subset)
