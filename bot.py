@@ -2,19 +2,17 @@ import os
 import requests
 import pandas as pd
 from datetime import datetime
-import xml.etree.ElementTree as ET
+import smtplib
+from email.mime.text import MIMEText
 
-# Configuration settings
 TARGET_COUNT = 25
 EXCEL_FILE_PATH = "dubai_job_tracker.xlsx"
 
 def init_excel_or_get_history():
-    """Ensures the Excel tracking sheet exists and reads historical job descriptions to prevent duplication."""
     if not os.path.exists(EXCEL_FILE_PATH):
         df = pd.DataFrame(columns=["Title", "Workplace", "Email", "Experience", "Industry", "Qualification", "Nationality", "Gender", "Expiry Date", "Posted Date", "Job Type"])
         df.to_excel(EXCEL_FILE_PATH, index=False)
         return set()
-    
     try:
         excel_file = pd.ExcelFile(EXCEL_FILE_PATH)
         history = set()
@@ -28,16 +26,12 @@ def init_excel_or_get_history():
         return set()
 
 def fetch_dubai_jobs_pipeline(history):
-    """Scrapes live Dubai jobs directly via LinkedIn's active public Guest Job API endpoint."""
     print("Connecting to live LinkedIn job index...")
-    
     url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Dubai&location=United%20Arab%20Emirates&start=0"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
-    
     fresh_jobs = []
-    
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code != 200:
@@ -45,7 +39,6 @@ def fetch_dubai_jobs_pipeline(history):
             return fresh_jobs
             
         from bs4 import BeautifulSoup
-        
         soup = BeautifulSoup(response.text, 'html.parser')
         job_cards = soup.find_all("li")
         
@@ -63,7 +56,6 @@ def fetch_dubai_jobs_pipeline(history):
             link = link_tag['href'].split('?')[0] if link_tag else "https://linkedin.com"
             pub_date = date_tag.text.strip() if date_tag else datetime.now().strftime("%d-%m-%Y")
             
-            # Filter out duplicates from your history logs
             if clean_title.lower().strip() in history:
                 continue
                 
@@ -80,11 +72,9 @@ def fetch_dubai_jobs_pipeline(history):
                 "posted_date": pub_date,
                 "job_type": "Full Time"
             }
-            
             fresh_jobs.append(job_data)
             if len(fresh_jobs) >= TARGET_COUNT:
                 break
-                
     except Exception as e:
         print(f"Scraper structural checkpoint: {str(e)}")
         
@@ -92,9 +82,7 @@ def fetch_dubai_jobs_pipeline(history):
     return fresh_jobs
 
 def build_email_broadcast_payload(jobs):
-    """Formats the extracted jobs into your clean, customized WhatsApp Community text block."""
     payload = "🚀 *RIGHTVOWS LIVE DUBAI JOB BROADCAST* 🚀\n\n"
-    
     if not jobs:
         payload += "No new unique vacancies discovered today! Check back tomorrow for fresh updates.\n\n"
     else:
@@ -105,9 +93,7 @@ def build_email_broadcast_payload(jobs):
             payload += f"⛳ *Work Place:* {job.get('workplace', 'N/A')}\n"
             payload += f"🕹️ *Visa Status:* Any\n"
             payload += f"💰 *Salary:* To be discussed\n\n"
-            
             payload += f"📥 *Application/Email:* {job.get('email', 'N/A')}\n\n"
-            
             payload += f"💼 *Experience:* {job.get('experience', 'As per job post')}\n"
             payload += f"🔎 *Industry:* {job.get('ind', 'N/A')}\n"
             payload += f"📚 *Qualification:* {job.get('qualification', 'Relevant Degree or Certification')}\n"
@@ -118,19 +104,37 @@ def build_email_broadcast_payload(jobs):
             payload += f"🛡️ *Job Type:* {job.get('job_type', 'Full Time')}\n"
             payload += f"🚀 *Source of Vacancy:* RightVows Job Store (via LinkedIn)\n\n"
             payload += "----------------------------------------\n\n"
-        
     payload += "Best Wishes,\n*HR Team*\n*RightVows*\n_Connecting Your Talent_"
     return payload
 
+def send_direct_email(content):
+    """Sends the broadcast text directly using secure built-in Python SMTP protocol."""
+    print("Initiating direct secure email transmission...")
+    sender = "sngithacv@gmail.com"
+    receiver = "sngithacv@gmail.com"
+    
+    # Using your active application password credentials
+    app_password = "qyfx xbnm xgzo ytyu" 
+    
+    msg = MIMEText(content, "plain", "utf-8")
+    msg["Subject"] = "🚀 RIGHTVOWS DAILY WHATSAPP BROADCAST MATRICES"
+    msg["From"] = f"RightVows Bot <{sender}>"
+    msg["To"] = receiver
+    
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender, app_password)
+            server.sendmail(sender, [receiver], msg.as_string())
+        print("Email transmitted successfully straight to your inbox!")
+    except Exception as e:
+        print(f"Direct mail transport failure: {str(e)}")
+
 def save_jobs_to_excel(jobs):
-    """Appends today's parsed data as a brand new dated sheet tab inside the master workbook."""
     if not jobs:
         return
-        
     today_str = datetime.now().strftime("%d-%m-%Y")
     df_new = pd.DataFrame(jobs)
     df_new.columns = [c.replace('_', ' ').title() for c in df_new.columns]
-    
     try:
         with pd.ExcelWriter(EXCEL_FILE_PATH, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
             df_new.to_excel(writer, sheet_name=today_str, index=False)
@@ -146,8 +150,8 @@ if __name__ == "__main__":
     target_subset = fresh_vacancies[:TARGET_COUNT]
     broadcast_text = build_email_broadcast_payload(target_subset)
     
-    with open("latest_job_broadcast.txt", "w", encoding="utf-8") as f:
-        f.write(broadcast_text)
+    # Send the email immediately from the script execution context
+    send_direct_email(broadcast_text)
     
     if target_subset:
         save_jobs_to_excel(target_subset)
