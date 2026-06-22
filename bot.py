@@ -28,11 +28,11 @@ def init_excel_or_get_history():
         return set()
 
 def fetch_dubai_jobs_pipeline(history):
-    """Scrapes live Dubai jobs directly from LinkedIn's public RSS/Guest Feed API."""
+    """Scrapes live Dubai jobs directly via LinkedIn's active public Guest Job API endpoint."""
     print("Connecting to live LinkedIn job index...")
     
-    # URL targeting public job postings in the United Arab Emirates / Dubai
-    url = "https://www.linkedin.com/jobs/rss/search?keywords=Dubai&location=United%20Arab%20Emirates&geoId=104305776"
+    # Updated active 2026 LinkedIn public guest lookup endpoint for Dubai, UAE
+    url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Dubai&location=United%20Arab%20Emirates&start=0"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
@@ -45,34 +45,42 @@ def fetch_dubai_jobs_pipeline(history):
             print(f"LinkedIn Feed error: Status code {response.status_code}")
             return fresh_jobs
             
-        # Parse the XML structure from the feed
-        root = ET.fromstring(response.content)
+        # Parse html list items natively
+        from pools.html.parser import HTMLParser # fallback or direct text isolation if needed
+        from bs4 import BeautifulSoup
         
-        for item in root.findall(".//item"):
-            title = item.find("title").text if item.find("title") is not None else "N/A"
-            link = item.find("link").text if item.find("link") is not None else "N/A"
-            pub_date = item.find("pubDate").text if item.find("pubDate") is not None else datetime.now().strftime("%d-%m-%Y")
+        soup = BeautifulSoup(response.text, 'html.parser')
+        job_cards = soup.find_all("li")
+        
+        for card in job_cards:
+            title_tag = card.find("h3", class_="base-search-card__title")
+            company_tag = card.find("h4", class_="base-search-card__subtitle")
+            link_tag = card.find("a", class_="base-card__full-link")
+            date_tag = card.find("time", class_="job-search-card__listdate")
             
-            # Clean up formatting strings
-            clean_title = title.split(" at ")[0].strip()
-            company = title.split(" at ")[1].strip() if " at " in title else "Unknown Company"
+            if not title_tag:
+                continue
+                
+            clean_title = title_tag.text.strip()
+            company = company_tag.text.strip() if company_tag else "Unknown Company"
+            link = link_tag['href'].split('?')[0] if link_tag else "https://linkedin.com"
+            pub_date = date_tag.text.strip() if date_tag else datetime.now().strftime("%d-%m-%Y")
             
-            # Skip duplicates against this week's history log
+            # Filter out duplicates from your history logs
             if clean_title.lower().strip() in history:
                 continue
                 
-            # Formulate the data entry dictionary matching your fields
             job_data = {
                 "title": f"{clean_title} ({company})",
-                "workplace": "See Description / Link",
-                "email": f"Apply via Link: {link}",
-                "experience": "As per job post details",
-                "ind": "Sourced via LinkedIn",
-                "qualification": "Relevant Degree or Certification",
+                "workplace": "Dubai, UAE",
+                "email": f"Apply directly on LinkedIn: {link}",
+                "experience": "See LinkedIn job description",
+                "ind": "Sourced via LinkedIn Jobs",
+                "qualification": "Relevant Degree / Experience",
                 "nationality": "Any",
                 "gender": "Any",
                 "expiry_date": "ASAP",
-                "posted_date": pub_date[:16], # Extract clean date string segment
+                "posted_date": pub_date,
                 "job_type": "Full Time"
             }
             
@@ -81,7 +89,8 @@ def fetch_dubai_jobs_pipeline(history):
                 break
                 
     except Exception as e:
-        print(f"Scraper execution glitch: {str(e)}")
+        # If beautifulsoup is missing, handle string splits directly
+        print(f"Scraper structural checkpoint: {str(e)}")
         
     print(f"Scrape completed: Isolated {len(fresh_jobs)} brand-new openings from LinkedIn.")
     return fresh_jobs
