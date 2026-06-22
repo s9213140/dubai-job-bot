@@ -25,7 +25,7 @@ jobs:
       - name: Execute Pipeline Engine
         run: python bot.py
 
-      - name: Save Updated Excel Tracker Back to GitHub
+      - name: Save Updated Files Back to GitHub
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Automated Sheet Update: Appended New Daily Matches"
+          commit_message: "Automated Update: Logged Jobs & WhatsApp Text Block"
