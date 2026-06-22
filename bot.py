@@ -31,7 +31,6 @@ def fetch_dubai_jobs_pipeline(history):
     """Scrapes live Dubai jobs directly via LinkedIn's active public Guest Job API endpoint."""
     print("Connecting to live LinkedIn job index...")
     
-    # Updated active 2026 LinkedIn public guest lookup endpoint for Dubai, UAE
     url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Dubai&location=United%20Arab%20Emirates&start=0"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -45,8 +44,6 @@ def fetch_dubai_jobs_pipeline(history):
             print(f"LinkedIn Feed error: Status code {response.status_code}")
             return fresh_jobs
             
-        # Parse html list items natively
-        from pools.html.parser import HTMLParser # fallback or direct text isolation if needed
         from bs4 import BeautifulSoup
         
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -89,7 +86,6 @@ def fetch_dubai_jobs_pipeline(history):
                 break
                 
     except Exception as e:
-        # If beautifulsoup is missing, handle string splits directly
         print(f"Scraper structural checkpoint: {str(e)}")
         
     print(f"Scrape completed: Isolated {len(fresh_jobs)} brand-new openings from LinkedIn.")
